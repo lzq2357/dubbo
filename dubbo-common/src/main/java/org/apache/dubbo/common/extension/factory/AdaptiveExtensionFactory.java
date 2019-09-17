@@ -26,6 +26,8 @@ import java.util.List;
 
 /**
  * AdaptiveExtensionFactory
+ *
+ * 默认的 dubbo beanFactory
  */
 @Adaptive
 public class AdaptiveExtensionFactory implements ExtensionFactory {

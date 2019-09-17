@@ -56,11 +56,22 @@ import java.util.regex.Pattern;
  * @see org.apache.dubbo.common.extension.SPI
  * @see org.apache.dubbo.common.extension.Adaptive
  * @see org.apache.dubbo.common.extension.Activate
+ *
+ *
+ *
+ * jdk spi 是通过 ServerLoader 加载 meta-inf/interface_name  配置的实现类
+ * dubbo spi 是通过  ExtensionLoader 加载 meta-inf/dubbo/interface_name  配置的实现类。
+ *      1.配置文件中，是key=value的形式。后面要取 实现类，都是以key 取
+ *      2.接口上必须 标记 @spi，可以指定一个默认的实现类的 key
+ *      3.
+ *
  */
 public class ExtensionLoader<T> {
 
     private static final Logger logger = LoggerFactory.getLogger(ExtensionLoader.class);
 
+
+    /** 加载配置文件的 几个目录 */
     private static final String SERVICES_DIRECTORY = "META-INF/services/";
 
     private static final String DUBBO_DIRECTORY = "META-INF/dubbo/";
@@ -69,40 +80,61 @@ public class ExtensionLoader<T> {
 
     private static final Pattern NAME_SEPARATOR = Pattern.compile("\\s*[,]+\\s*");
 
+
+    /** 缓存 类型和对应的 ExtensionLoader */
     private static final ConcurrentMap<Class<?>, ExtensionLoader<?>> EXTENSION_LOADERS = new ConcurrentHashMap<Class<?>, ExtensionLoader<?>>();
 
     private static final ConcurrentMap<Class<?>, Object> EXTENSION_INSTANCES = new ConcurrentHashMap<Class<?>, Object>();
 
     // ==============================
 
+    /** 当前加载的哪个接口 */
     private final Class<?> type;
 
+    /** dubbo ioc */
     private final ExtensionFactory objectFactory;
 
     private final ConcurrentMap<Class<?>, String> cachedNames = new ConcurrentHashMap<Class<?>, String>();
 
+    /** 缓存的 */
     private final Holder<Map<String, Class<?>>> cachedClasses = new Holder<Map<String, Class<?>>>();
 
     private final Map<String, Object> cachedActivates = new ConcurrentHashMap<String, Object>();
     private final ConcurrentMap<String, Holder<Object>> cachedInstances = new ConcurrentHashMap<String, Holder<Object>>();
+
+
+    /** 缓存自适应代理类 */
     private final Holder<Object> cachedAdaptiveInstance = new Holder<Object>();
+
+    /***/
     private volatile Class<?> cachedAdaptiveClass = null;
+
+    /** spi接口，默认的实现类的 key */
     private String cachedDefaultName;
     private volatile Throwable createAdaptiveInstanceError;
 
+    /** 包装类的类型 */
     private Set<Class<?>> cachedWrapperClasses;
 
     private Map<String, IllegalStateException> exceptions = new ConcurrentHashMap<String, IllegalStateException>();
 
     private ExtensionLoader(Class<?> type) {
         this.type = type;
-        objectFactory = (type == ExtensionFactory.class ? null : ExtensionLoader.getExtensionLoader(ExtensionFactory.class).getAdaptiveExtension());
+
+        //默认 AdaptiveExtensionFactory
+        objectFactory = (type == ExtensionFactory.class ? null :
+                ExtensionLoader.getExtensionLoader(ExtensionFactory.class).getAdaptiveExtension());
     }
 
     private static <T> boolean withExtensionAnnotation(Class<T> type) {
         return type.isAnnotationPresent(SPI.class);
     }
 
+
+
+    /**
+     * 根据类型，查找 对应的 ExtensionLoader，如果没有，则新建一个缓存下来
+     * */
     @SuppressWarnings("unchecked")
     public static <T> ExtensionLoader<T> getExtensionLoader(Class<T> type) {
         if (type == null)
@@ -110,6 +142,8 @@ public class ExtensionLoader<T> {
         if (!type.isInterface()) {
             throw new IllegalArgumentException("Extension type(" + type + ") is not interface!");
         }
+
+        //必须有 spi 注解
         if (!withExtensionAnnotation(type)) {
             throw new IllegalArgumentException("Extension type(" + type +
                     ") is not extension, because WITHOUT @" + SPI.class.getSimpleName() + " Annotation!");
@@ -117,6 +151,7 @@ public class ExtensionLoader<T> {
 
         ExtensionLoader<T> loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         if (loader == null) {
+            //缓存type 和 对应的ExtensionLoader
             EXTENSION_LOADERS.putIfAbsent(type, new ExtensionLoader<T>(type));
             loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         }
@@ -306,6 +341,8 @@ public class ExtensionLoader<T> {
     public T getExtension(String name) {
         if (name == null || name.length() == 0)
             throw new IllegalArgumentException("Extension name == null");
+
+        //默认的
         if ("true".equals(name)) {
             return getDefaultExtension();
         }
@@ -445,6 +482,13 @@ public class ExtensionLoader<T> {
         }
     }
 
+
+
+
+    /**
+     * 获取 自适应代理类
+     *
+     * */
     @SuppressWarnings("unchecked")
     public T getAdaptiveExtension() {
         Object instance = cachedAdaptiveInstance.get();
@@ -454,6 +498,7 @@ public class ExtensionLoader<T> {
                     instance = cachedAdaptiveInstance.get();
                     if (instance == null) {
                         try {
+                            //
                             instance = createAdaptiveExtension();
                             cachedAdaptiveInstance.set(instance);
                         } catch (Throwable t) {
@@ -497,6 +542,8 @@ public class ExtensionLoader<T> {
 
     @SuppressWarnings("unchecked")
     private T createExtension(String name) {
+
+        //getExtensionClasses 触发扫描 配置文件
         Class<?> clazz = getExtensionClasses().get(name);
         if (clazz == null) {
             throw findException(name);
@@ -511,6 +558,14 @@ public class ExtensionLoader<T> {
             Set<Class<?>> wrapperClasses = cachedWrapperClasses;
             if (wrapperClasses != null && !wrapperClasses.isEmpty()) {
                 for (Class<?> wrapperClass : wrapperClasses) {
+
+                    //如果这个类 有一个构造方法是传入自己的父类，说明是一个包装类
+                    //class A implement Parent {
+                    //      private Parent p;
+                    //      A(Parent p){
+                    //          this.p = p
+                    //      }
+                    // }
                     instance = injectExtension((T) wrapperClass.getConstructor(type).newInstance(instance));
                 }
             }
@@ -521,16 +576,28 @@ public class ExtensionLoader<T> {
         }
     }
 
+
+    /**
+     * dubbo 的 di，注入 instance 对象中的属性。
+     * 查找 instance 中有 set方法的 属性，
+     * 从 objectFactory 中 获取 属性名称对应的 对象。这是 dubbo的 ioc
+     * */
     private T injectExtension(T instance) {
         try {
             if (objectFactory != null) {
                 for (Method method : instance.getClass().getMethods()) {
+
+                    //有set方法
                     if (method.getName().startsWith("set")
                             && method.getParameterTypes().length == 1
                             && Modifier.isPublic(method.getModifiers())) {
                         Class<?> pt = method.getParameterTypes()[0];
                         try {
+
+                            //>3 ：可能有 is开头的方法
                             String property = method.getName().length() > 3 ? method.getName().substring(3, 4).toLowerCase() + method.getName().substring(4) : "";
+
+                            //objectFactory 获取 属性名称对应的  类
                             Object object = objectFactory.getExtension(pt, property);
                             if (object != null) {
                                 method.invoke(instance, object);
@@ -565,6 +632,7 @@ public class ExtensionLoader<T> {
             synchronized (cachedClasses) {
                 classes = cachedClasses.get();
                 if (classes == null) {
+                    //触发扫描 配置文件
                     classes = loadExtensionClasses();
                     cachedClasses.set(classes);
                 }
@@ -573,11 +641,21 @@ public class ExtensionLoader<T> {
         return classes;
     }
 
+
+
+    /**
+     * 扫描配置文件，获取 key-value
+     * */
     // synchronized in getExtensionClasses
     private Map<String, Class<?>> loadExtensionClasses() {
+
+
+        //类上的 spi注解，如果有值，则放到 cachedDefaultName
         final SPI defaultAnnotation = type.getAnnotation(SPI.class);
         if (defaultAnnotation != null) {
             String value = defaultAnnotation.value();
+
+            //有值，则有一个默认 值
             if ((value = value.trim()).length() > 0) {
                 String[] names = NAME_SEPARATOR.split(value);
                 if (names.length > 1) {
@@ -588,6 +666,8 @@ public class ExtensionLoader<T> {
             }
         }
 
+
+        //加载配置文件中的，key <-> 全限定名的class
         Map<String, Class<?>> extensionClasses = new HashMap<String, Class<?>>();
         loadDirectory(extensionClasses, DUBBO_INTERNAL_DIRECTORY, type.getName());
         loadDirectory(extensionClasses, DUBBO_INTERNAL_DIRECTORY, type.getName().replace("org.apache", "com.alibaba"));
@@ -611,6 +691,7 @@ public class ExtensionLoader<T> {
             if (urls != null) {
                 while (urls.hasMoreElements()) {
                     java.net.URL resourceURL = urls.nextElement();
+                    //加载 类（不实例化）
                     loadResource(extensionClasses, classLoader, resourceURL);
                 }
             }
@@ -620,24 +701,34 @@ public class ExtensionLoader<T> {
         }
     }
 
+
+    /**
+     * 解析 配置文件中的  配置的 一行一行的 实现类全限定名称
+     *
+     * */
     private void loadResource(Map<String, Class<?>> extensionClasses, ClassLoader classLoader, java.net.URL resourceURL) {
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(resourceURL.openStream(), "utf-8"));
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {
+
+                    // #后面的是 注释
                     final int ci = line.indexOf('#');
                     if (ci >= 0) line = line.substring(0, ci);
                     line = line.trim();
                     if (line.length() > 0) {
                         try {
                             String name = null;
+
+                            // = 前面的是key，后面的是 value 即实现类 全限定名
                             int i = line.indexOf('=');
                             if (i > 0) {
                                 name = line.substring(0, i).trim();
                                 line = line.substring(i + 1).trim();
                             }
                             if (line.length() > 0) {
+                                //把 key-value  对应关系，放入 extensionClasses
                                 loadClass(extensionClasses, resourceURL, Class.forName(line, true, classLoader), name);
                             }
                         } catch (Throwable t) {
@@ -655,12 +746,24 @@ public class ExtensionLoader<T> {
         }
     }
 
+
+
+
+    /**
+     * 加载 类，把 key和 类对应起来，但是不实例化
+     *
+     * clazz：实现类
+     * name：配置文件中的 key
+     * */
     private void loadClass(Map<String, Class<?>> extensionClasses, java.net.URL resourceURL, Class<?> clazz, String name) throws NoSuchMethodException {
         if (!type.isAssignableFrom(clazz)) {
             throw new IllegalStateException("Error when load extension class(interface: " +
                     type + ", class line: " + clazz.getName() + "), class "
                     + clazz.getName() + "is not subtype of interface.");
         }
+
+        //如果这个 实现上有 Adaptive 注解，则把它放在 cachedAdaptiveClass
+        // adaptive 注解标记  只能有一个实现类
         if (clazz.isAnnotationPresent(Adaptive.class)) {
             if (cachedAdaptiveClass == null) {
                 cachedAdaptiveClass = clazz;
@@ -677,6 +780,8 @@ public class ExtensionLoader<T> {
             }
             wrappers.add(clazz);
         } else {
+
+            //检查 构造函数
             clazz.getConstructor();
             if (name == null || name.length() == 0) {
                 name = findAnnotationName(clazz);
@@ -685,6 +790,8 @@ public class ExtensionLoader<T> {
                 }
             }
             String[] names = NAME_SEPARATOR.split(name);
+
+            //如果有 active 注解
             if (names != null && names.length > 0) {
                 Activate activate = clazz.getAnnotation(Activate.class);
                 if (activate != null) {
@@ -743,6 +850,8 @@ public class ExtensionLoader<T> {
     }
 
     private Class<?> getAdaptiveExtensionClass() {
+
+        //获取 接口对应的实现类。接口类型 当前的type
         getExtensionClasses();
         if (cachedAdaptiveClass != null) {
             return cachedAdaptiveClass;
