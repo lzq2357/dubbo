@@ -81,9 +81,10 @@ public class ExtensionLoader<T> {
     private static final Pattern NAME_SEPARATOR = Pattern.compile("\\s*[,]+\\s*");
 
 
-    /** 缓存 类型和对应的 ExtensionLoader */
+    /** 缓存 class 和对应的 ExtensionLoader */
     private static final ConcurrentMap<Class<?>, ExtensionLoader<?>> EXTENSION_LOADERS = new ConcurrentHashMap<Class<?>, ExtensionLoader<?>>();
 
+    /** 缓存 接口实现类的  class 和对应的 对象 */
     private static final ConcurrentMap<Class<?>, Object> EXTENSION_INSTANCES = new ConcurrentHashMap<Class<?>, Object>();
 
     // ==============================
@@ -91,14 +92,23 @@ public class ExtensionLoader<T> {
     /** 当前加载的哪个接口 */
     private final Class<?> type;
 
-    /** dubbo ioc */
+    /** dubbo ioc
+     *
+     * 默认 AdaptiveExtensionFactory,  用于给创建的XXX$Adaptive 注入属性
+     *
+     * */
     private final ExtensionFactory objectFactory;
 
     private final ConcurrentMap<Class<?>, String> cachedNames = new ConcurrentHashMap<Class<?>, String>();
 
-    /** 缓存的 */
+    /**
+     * 缓存 未被@Adaptive注解且构造器的参数非ExtensionFactory.type的clazz集合
+     */
     private final Holder<Map<String, Class<?>>> cachedClasses = new Holder<Map<String, Class<?>>>();
 
+    /**
+     * 缓存加载配置文件内 未被@Adaptive注解，且非wrapper类，且 被 @Activate注解
+     */
     private final Map<String, Object> cachedActivates = new ConcurrentHashMap<String, Object>();
     private final ConcurrentMap<String, Holder<Object>> cachedInstances = new ConcurrentHashMap<String, Holder<Object>>();
 
@@ -106,14 +116,15 @@ public class ExtensionLoader<T> {
     /** 缓存自适应代理类 */
     private final Holder<Object> cachedAdaptiveInstance = new Holder<Object>();
 
-    /***/
+    /** 缓存 class对应的 adaptiveClass */
     private volatile Class<?> cachedAdaptiveClass = null;
 
     /** spi接口，默认的实现类的 key */
     private String cachedDefaultName;
+
     private volatile Throwable createAdaptiveInstanceError;
 
-    /** 包装类的类型 */
+    /** 未被@Adaptive注解且 是包装类的类型 */
     private Set<Class<?>> cachedWrapperClasses;
 
     private Map<String, IllegalStateException> exceptions = new ConcurrentHashMap<String, IllegalStateException>();
@@ -486,8 +497,9 @@ public class ExtensionLoader<T> {
 
 
     /**
-     * 获取 自适应代理类
+     * 获取 自适应代理类。内部会 根据@Adaptive 标记的方法，去生成一个代理类，代理这个方法。
      *
+     * 存到 cachedAdaptiveInstance
      * */
     @SuppressWarnings("unchecked")
     public T getAdaptiveExtension() {
@@ -859,17 +871,28 @@ public class ExtensionLoader<T> {
         return cachedAdaptiveClass = createAdaptiveExtensionClass();
     }
 
+
+    /**
+     * 通过写字节码 并编译为class
+     * */
     private Class<?> createAdaptiveExtensionClass() {
+        //字节码操作，生产代理类字节码的字符串形式
         String code = createAdaptiveExtensionClassCode();
         ClassLoader classLoader = findClassLoader();
-        org.apache.dubbo.common.compiler.Compiler compiler = ExtensionLoader.getExtensionLoader(org.apache.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
+        org.apache.dubbo.common.compiler.Compiler compiler =
+                ExtensionLoader.getExtensionLoader(org.apache.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
         return compiler.compile(code, classLoader);
     }
 
+    /**
+     * 内部会 根据@Adaptive 标记的方法，去生成一个代理类，代理这个方法。
+     * */
     private String createAdaptiveExtensionClassCode() {
         StringBuilder codeBuilder = new StringBuilder();
         Method[] methods = type.getMethods();
         boolean hasAdaptiveAnnotation = false;
+
+
         for (Method m : methods) {
             if (m.isAnnotationPresent(Adaptive.class)) {
                 hasAdaptiveAnnotation = true;
@@ -877,6 +900,7 @@ public class ExtensionLoader<T> {
             }
         }
         // no need to generate adaptive class since there's no adaptive method found.
+        // 根据@Adaptive 标记的方法，去生成一个代理类，代理这个方法。
         if (!hasAdaptiveAnnotation)
             throw new IllegalStateException("No adaptive method on extension " + type.getName() + ", refuse to create the adaptive class!");
 
@@ -898,8 +922,12 @@ public class ExtensionLoader<T> {
                 code.append("throw new UnsupportedOperationException(\"method ")
                         .append(method.toString()).append(" of interface ")
                         .append(type.getName()).append(" is not adaptive method!\");");
-            } else {
+            }
+            // 如果是Adaptive 方法，那么去url上找 指定的key
+            else {
                 int urlTypeIndex = -1;
+
+                //如果是Adaptive 方法，查看参数上 是否有 URL
                 for (int i = 0; i < pts.length; ++i) {
                     if (pts[i].equals(URL.class)) {
                         urlTypeIndex = i;
@@ -907,6 +935,7 @@ public class ExtensionLoader<T> {
                     }
                 }
                 // found parameter in URL type
+                // 如果参数上有URL，那么 就生成 判断url的 字节码：if(arg[x] == null){ 异常 }
                 if (urlTypeIndex != -1) {
                     // Null Point check
                     String s = String.format("\nif (arg%d == null) throw new IllegalArgumentException(\"url == null\");",
@@ -917,6 +946,7 @@ public class ExtensionLoader<T> {
                     code.append(s);
                 }
                 // did not find parameter in URL type
+                // 如果参数上没有URL，那么就查看 有没有 返回值是URL， get开头的方法
                 else {
                     String attribMethod = null;
 
@@ -954,6 +984,8 @@ public class ExtensionLoader<T> {
                     code.append(s);
                 }
 
+
+                //@adaptive 上指定的key，没有指定key，生成一个默认的
                 String[] value = adaptiveAnnotation.value();
                 // value is not set, use the value generated from class name as the key
                 if (value.length == 0) {
@@ -987,6 +1019,8 @@ public class ExtensionLoader<T> {
 
                 String defaultExtName = cachedDefaultName;
                 String getNameCode = null;
+
+                //@adaptive 上指定的key 为protocol时 特殊处理
                 for (int i = value.length - 1; i >= 0; --i) {
                     if (i == value.length - 1) {
                         if (null != defaultExtName) {
