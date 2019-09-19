@@ -21,7 +21,9 @@ import org.apache.dubbo.common.extension.ExtensionLoader;
 import org.apache.dubbo.common.extension.SPI;
 
 /**
- * SpiExtensionFactory
+ * liziq 实际干活的类，dubbo ioc的实际工作者。。。
+ *
+ * SpiExtensionFactory 在给 实例注入属性，实际就是 查找这个实例的默认子类给它
  */
 public class SpiExtensionFactory implements ExtensionFactory {
 

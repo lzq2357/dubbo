@@ -7,10 +7,13 @@ import org.apache.dubbo.common.extension.ExtensionLoader;
 /**
  * @spi("xxx")： 标记在接口上，标识接口的实现类是 spi，从配置文件找。
  *     配置文件是key-value形式。所以xxx代表  key的默认值
- * @Adaptive 放在实现类上，代表 这个实现类是 它父接口的 默认实现类
- * @Adaptive("myKey") 放在方法 上
- *     代表这个方法是动态的，在使用接口时，传入一个url，带上 myKey=xxx，代表这次使用的是 xxx这个类的 方法
  *
+ * @spi：标记这个类是 spi接口（dubbo自己的 spi），value="dubbo" 表示使用默认的key为dubbo
+ * @Adaptive 接口方法必须要有 URL 属性
+ *
+ * 实际上，dubbo只会根据 URL上的 adaptive.ext=xxx 来获取指定的实现类
+ *      @SPI("dubbo")， 则会在获取不到adaptive.ext的值时，给一个默认值"dubbo"
+ *      @Adaptive({"myKey"})， 则是 dubbo允许自定义 adaptive.ext这个名词，现在定义为 myKey
  *
  * 优先级：@Adaptive实现类 > url > spi默认值
  *          @Adaptive("myKey") 方法也是 通过url

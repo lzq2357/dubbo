@@ -25,9 +25,11 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * AdaptiveExtensionFactory
+ * liziq 默认的 dubbo beanFactory ，dubbo的 ioc
  *
- * 默认的 dubbo beanFactory
+ * 它实际上是包装了 ExtensionFactory 其它子类，目前来看只有 SpiExtensionFactory
+ *
+ * SpringExtensionFactory 也是一个干活的类，但是没地方用到
  */
 @Adaptive
 public class AdaptiveExtensionFactory implements ExtensionFactory {

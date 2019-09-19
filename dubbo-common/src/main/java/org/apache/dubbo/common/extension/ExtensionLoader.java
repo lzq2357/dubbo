@@ -89,12 +89,12 @@ public class ExtensionLoader<T> {
 
     // ==============================
 
-    /** 当前加载的哪个接口 */
+    /** 当前加载的哪个 SPI接口 */
     private final Class<?> type;
 
     /** dubbo ioc
      *
-     * 默认 AdaptiveExtensionFactory,  用于给创建的XXX$Adaptive 注入属性
+     * 默认 AdaptiveExtensionFactory,  用于给 SPI 子类 注入属性，现在注入的只是 SPI接口类型的属性，用的是  SPIExtensionFactory
      *
      * */
     private final ExtensionFactory objectFactory;
@@ -112,14 +112,17 @@ public class ExtensionLoader<T> {
     private final Map<String, Object> cachedActivates = new ConcurrentHashMap<String, Object>();
     private final ConcurrentMap<String, Holder<Object>> cachedInstances = new ConcurrentHashMap<String, Holder<Object>>();
 
-
-    /** 缓存自适应代理类 */
-    private final Holder<Object> cachedAdaptiveInstance = new Holder<Object>();
-
-    /** 缓存 class对应的 adaptiveClass */
+    /**
+     * 记录 SPI接口 对应的 代理类。
+     * 如果接口有 @Adaptive 的子类，则是 这个@Adaptive子类
+     * 如果没有，则动态 生成一个。 xxx$Adaptive
+     * */
     private volatile Class<?> cachedAdaptiveClass = null;
 
-    /** spi接口，默认的实现类的 key */
+    /** 记录 SPI接口 对应的 代理类实例 */
+    private final Holder<Object> cachedAdaptiveInstance = new Holder<Object>();
+
+    /** 记录 @SPI("defaultClassName")指定 defaultClassName */
     private String cachedDefaultName;
 
     private volatile Throwable createAdaptiveInstanceError;
@@ -144,7 +147,7 @@ public class ExtensionLoader<T> {
 
 
     /**
-     * 根据类型，查找 对应的 ExtensionLoader，如果没有，则新建一个缓存下来
+     * liziq 根据类型，查找 对应的 ExtensionLoader，如果没有，则新建一个缓存下来
      * */
     @SuppressWarnings("unchecked")
     public static <T> ExtensionLoader<T> getExtensionLoader(Class<T> type) {
@@ -162,7 +165,7 @@ public class ExtensionLoader<T> {
 
         ExtensionLoader<T> loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         if (loader == null) {
-            //缓存type 和 对应的ExtensionLoader
+            // 缓存type 和 对应的ExtensionLoader
             EXTENSION_LOADERS.putIfAbsent(type, new ExtensionLoader<T>(type));
             loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         }
@@ -360,6 +363,9 @@ public class ExtensionLoader<T> {
     /**
      * Find the extension with the given name. If the specified name is not found, then {@link IllegalStateException}
      * will be thrown.
+     *
+     * liziq 根据名称，获取对应的实例。
+     *  1.扫描
      */
     @SuppressWarnings("unchecked")
     public T getExtension(String name) {
@@ -380,6 +386,7 @@ public class ExtensionLoader<T> {
             synchronized (holder) {
                 instance = holder.get();
                 if (instance == null) {
+                    //创建一个
                     instance = createExtension(name);
                     holder.set(instance);
                 }
@@ -565,6 +572,11 @@ public class ExtensionLoader<T> {
         return new IllegalStateException(buf.toString());
     }
 
+
+    /**
+     * liziq 根据名称，创建一个 实现类的实例
+     *
+     * */
     @SuppressWarnings("unchecked")
     private T createExtension(String name) {
 
@@ -579,6 +591,8 @@ public class ExtensionLoader<T> {
                 EXTENSION_INSTANCES.putIfAbsent(clazz, clazz.newInstance());
                 instance = (T) EXTENSION_INSTANCES.get(clazz);
             }
+
+            //注入实例的属性，通过setter方法
             injectExtension(instance);
             Set<Class<?>> wrapperClasses = cachedWrapperClasses;
             if (wrapperClasses != null && !wrapperClasses.isEmpty()) {
@@ -603,12 +617,14 @@ public class ExtensionLoader<T> {
 
 
     /**
-     * dubbo 的 di，注入 instance 对象中的属性。
+     * liziq  dubbo 的 di，注入 instance 对象中的属性。
      * 查找 instance 中有 set方法的 属性，
      * 从 objectFactory 中 获取 属性名称对应的 对象。这是 dubbo的 ioc
      * */
     private T injectExtension(T instance) {
         try {
+
+            //liziq todo objectFactory
             if (objectFactory != null) {
                 for (Method method : instance.getClass().getMethods()) {
 
@@ -651,6 +667,10 @@ public class ExtensionLoader<T> {
         return clazz;
     }
 
+
+    /**
+     * liziq 获取接口的实现类，即：从dubbo-spi 配置文件中读取 实现类
+     * */
     private Map<String, Class<?>> getExtensionClasses() {
         Map<String, Class<?>> classes = cachedClasses.get();
         if (classes == null) {
@@ -669,7 +689,7 @@ public class ExtensionLoader<T> {
 
 
     /**
-     * 扫描配置文件，获取 key-value
+     * liziq 扫描配置文件，获取 key-value
      * */
     // synchronized in getExtensionClasses
     private Map<String, Class<?>> loadExtensionClasses() {
@@ -694,6 +714,8 @@ public class ExtensionLoader<T> {
 
         //加载配置文件中的，key <-> 全限定名的class
         Map<String, Class<?>> extensionClasses = new HashMap<String, Class<?>>();
+
+        //加载多个目录下的 配置文件
         loadDirectory(extensionClasses, DUBBO_INTERNAL_DIRECTORY, type.getName());
         loadDirectory(extensionClasses, DUBBO_INTERNAL_DIRECTORY, type.getName().replace("org.apache", "com.alibaba"));
         loadDirectory(extensionClasses, DUBBO_DIRECTORY, type.getName());
@@ -775,7 +797,9 @@ public class ExtensionLoader<T> {
 
 
     /**
-     * 加载 类，把 key和 类对应起来，但是不实例化
+     * 加载 类，把 key和 类对应起来，但是不实例化。
+     * 同时 记录 cachedAdaptiveClass。  如果 如果SPI接口的 某个子类上有 @Adaptive 注解，则记录到 cachedAdaptiveClass
+     *      否则，会 动态生成一个 代理类，记录到 cachedAdaptiveClass
      *
      * clazz：实现类
      * name：配置文件中的 key
@@ -787,8 +811,8 @@ public class ExtensionLoader<T> {
                     + clazz.getName() + "is not subtype of interface.");
         }
 
-        //如果这个 实现上有 Adaptive 注解，则把它放在 cachedAdaptiveClass
-        // adaptive 注解标记  只能有一个实现类
+        //liziq 如果SPI接口的 某个子类上有 @Adaptive 注解，则记录到 cachedAdaptiveClass
+        //否则，会 动态生成一个 代理类，记录到 cachedAdaptiveClass
         if (clazz.isAnnotationPresent(Adaptive.class)) {
             if (cachedAdaptiveClass == null) {
                 cachedAdaptiveClass = clazz;
@@ -865,10 +889,16 @@ public class ExtensionLoader<T> {
         return extension.value();
     }
 
+
+    /**
+     * liziq 创建一个代理实现类
+     * */
     @SuppressWarnings("unchecked")
     private T createAdaptiveExtension() {
         try {
-            return injectExtension((T) getAdaptiveExtensionClass().newInstance());
+            //创建一个实现类的代理类，然后注入
+            T t = (T) getAdaptiveExtensionClass().newInstance();
+            return injectExtension(t);
         } catch (Exception e) {
             throw new IllegalStateException("Can not create adaptive extension " + type + ", cause: " + e.getMessage(), e);
         }
@@ -878,20 +908,27 @@ public class ExtensionLoader<T> {
 
         //获取 接口对应的实现类。接口类型 当前的type
         getExtensionClasses();
+
+
         if (cachedAdaptiveClass != null) {
             return cachedAdaptiveClass;
         }
+
+        //
         return cachedAdaptiveClass = createAdaptiveExtensionClass();
     }
 
 
     /**
-     * 通过写字节码 并编译为class
+     * liziq 通过写字节码，生成代理类字符串，然后 编译为class，这个class就是 代理类
      * */
     private Class<?> createAdaptiveExtensionClass() {
         //字节码操作，生产代理类字节码的字符串形式
         String code = createAdaptiveExtensionClassCode();
+
         ClassLoader classLoader = findClassLoader();
+
+        //获取 Compiler 的实现类。默认是 JavassistCompiler
         org.apache.dubbo.common.compiler.Compiler compiler =
                 ExtensionLoader.getExtensionLoader(org.apache.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
         return compiler.compile(code, classLoader);
@@ -899,9 +936,12 @@ public class ExtensionLoader<T> {
 
     /**
      * 内部会 根据@Adaptive 标记的方法，去生成一个代理类，代理这个方法。
+     * 以 liziq.spi_Adaptive.AdaptiveExt 接口为例
+     * 生成的结果参考：liziq.spi_Adaptive.AdaptiveExt$Adaptive_temp
      * */
     private String createAdaptiveExtensionClassCode() {
         StringBuilder codeBuilder = new StringBuilder();
+        //接口内的方法
         Method[] methods = type.getMethods();
         boolean hasAdaptiveAnnotation = false;
 
@@ -917,8 +957,11 @@ public class ExtensionLoader<T> {
         if (!hasAdaptiveAnnotation)
             throw new IllegalStateException("No adaptive method on extension " + type.getName() + ", refuse to create the adaptive class!");
 
+
         codeBuilder.append("package ").append(type.getPackage().getName()).append(";");
         codeBuilder.append("\nimport ").append(ExtensionLoader.class.getName()).append(";");
+
+
         codeBuilder.append("\npublic class ").append(type.getSimpleName()).append("$Adaptive").append(" implements ").append(type.getCanonicalName()).append(" {");
 
         codeBuilder.append("\nprivate static final org.apache.dubbo.common.logger.Logger logger = org.apache.dubbo.common.logger.LoggerFactory.getLogger(ExtensionLoader.class);");
@@ -1119,6 +1162,7 @@ public class ExtensionLoader<T> {
         if (logger.isDebugEnabled()) {
             logger.debug(codeBuilder.toString());
         }
+
         return codeBuilder.toString();
     }
 
