@@ -1,0 +1,3 @@
+dubbo=liziq.spi_Adaptive.DubboAdaptiveExt
+cloud=liziq.spi_Adaptive.SpringCloudAdaptiveExt
+other=liziq.spi_Adaptive.OtherAdaptiveExt

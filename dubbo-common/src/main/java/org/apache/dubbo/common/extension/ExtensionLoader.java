@@ -216,6 +216,8 @@ public class ExtensionLoader<T> {
      * @see #getActivateExtension(org.apache.dubbo.common.URL, String[], String)
      */
     public List<T> getActivateExtension(URL url, String key, String group) {
+
+        //liziq key用来取 url上的 参数值，然后作为 ActivateValue去过滤
         String value = url.getParameter(key);
         return getActivateExtension(url, value == null || value.length() == 0 ? null : Constants.COMMA_SPLIT_PATTERN.split(value), group);
     }
@@ -224,8 +226,8 @@ public class ExtensionLoader<T> {
      * Get activate extensions.
      *
      * @param url    url
-     * @param values extension point names
-     * @param group  group
+     * @param values dubbo spi 中，实现类的名称集合
+     * @param group  以指定的group 过滤
      * @return extension list which are activated
      * @see org.apache.dubbo.common.extension.Activate
      */
@@ -249,8 +251,16 @@ public class ExtensionLoader<T> {
                 } else {
                     continue;
                 }
+
+
+
+                //liziq 这里逻辑是：group + activateValue 同时过滤，如果值为空，则代表匹配所有
+
+                //1.如果实现类上，包含 指定的 group，再查看 实现类名称是否符合要求
                 if (isMatchGroup(group, activateGroup)) {
                     T ext = getExtension(name);
+
+                    //2.再次 过滤， Activate 有value值，则 url上必须含有 activateValue
                     if (!names.contains(name)
                             && !names.contains(Constants.REMOVE_VALUE_PREFIX + name)
                             && isActive(activateValue, url)) {
@@ -260,6 +270,9 @@ public class ExtensionLoader<T> {
             }
             Collections.sort(exts, ActivateComparator.COMPARATOR);
         }
+
+
+        //liziq 再次，通过实现类的名称过滤（注意，这里忽略了 group、activateValue）
         List<T> usrs = new ArrayList<T>();
         for (int i = 0; i < names.size(); i++) {
             String name = names.get(i);

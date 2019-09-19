@@ -112,6 +112,12 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
         return service;
     }
 
+
+
+    /**
+     * spring 容器启动后，通知
+     * 然后service bean 开始暴露服务
+     * */
     @Override
     public void onApplicationEvent(ContextRefreshedEvent event) {
         if (isDelay() && !isExported() && !isUnexported()) {

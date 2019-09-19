@@ -1,8 +1,6 @@
-package liziq;
+package liziq.spi_Activate;
 
 
-import org.apache.dubbo.common.URL;
-import org.apache.dubbo.common.extension.Adaptive;
 import org.apache.dubbo.common.extension.SPI;
 
 /**
@@ -14,12 +12,12 @@ import org.apache.dubbo.common.extension.SPI;
  * @author liziq
  * */
 @SPI("dubbo")
-public interface AdaptiveExt {
+public interface ActivateExt {
+
+
 
     /**
      * 打印
-     * @param url ： 接口必须有 url参数
      * */
-    @Adaptive({"myKey"})
-    void echo(URL url);
+    void echo();
 }

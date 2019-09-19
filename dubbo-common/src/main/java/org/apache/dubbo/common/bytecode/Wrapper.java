@@ -92,6 +92,10 @@ public abstract class Wrapper {
     /**
      * get wrapper.
      *
+     * 获取包装类，并缓存
+     *
+     * makeWrapper：字节码操作生成 包装类
+     *
      * @param c Class instance.
      * @return Wrapper instance(not null).
      */
