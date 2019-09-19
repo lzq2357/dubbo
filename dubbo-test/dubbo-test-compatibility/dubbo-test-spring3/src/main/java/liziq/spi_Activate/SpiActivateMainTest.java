@@ -3,7 +3,6 @@ package liziq.spi_Activate;
 import org.apache.dubbo.common.URL;
 import org.apache.dubbo.common.extension.ExtensionLoader;
 
-
 import java.util.List;
 
 /**

@@ -27,7 +27,7 @@ import org.apache.dubbo.demo.DemoService;
 @Service(
         version = "2.5.8",
         application = "dubbo-annotation-provider",
-        protocol = "dubbo",
+        protocol = "META-INF/dubbo",
         registry = "my-registry"
 )
 public class DefaultDemoService implements DemoService {

@@ -127,7 +127,18 @@ public class ExtensionLoader<T> {
 
     private volatile Throwable createAdaptiveInstanceError;
 
-    /** 未被@Adaptive注解且 是包装类的类型 */
+    /** 未被@Adaptive注解且 是包装类的类型
+     *
+     * 如果这个类 有一个构造方法是传入自己的父类，说明是一个包装类
+     *
+     * class A implement Parent {
+     *      private Parent p;
+     *
+     *      A(Parent p){
+     *          this.p = p
+     *      }
+     * }
+     * */
     private Set<Class<?>> cachedWrapperClasses;
 
     private Map<String, IllegalStateException> exceptions = new ConcurrentHashMap<String, IllegalStateException>();
@@ -592,20 +603,29 @@ public class ExtensionLoader<T> {
                 instance = (T) EXTENSION_INSTANCES.get(clazz);
             }
 
-            //注入实例的属性，通过setter方法
+            //liziq dubbo-ioc 注入实例的属性，通过setter方法
             injectExtension(instance);
+
+
+            //liziq dubbo-wrapper aop
+
+            //如果这个 接口有 包装类型的子类，则包装
+            /**
+             * liziq dubbo-wrapper 如果SPI的子类 是包装类，则缓存到 cachedWrapperClasses
+             * 比如 Protocol 接口有 ProtocolFilterWrapper、ProtocolListenerWrapper 都是 wrapper类型
+             * 当我们获取 DubboProtocol时，会被作为构造函数
+             *      传入到 ProtocolFilterWrapper，包装为 ProtocolFilterWrapper
+             *      然后再传入 ProtocolListenerWrapper 包装
+             *
+             * 最后生成
+             */
             Set<Class<?>> wrapperClasses = cachedWrapperClasses;
             if (wrapperClasses != null && !wrapperClasses.isEmpty()) {
                 for (Class<?> wrapperClass : wrapperClasses) {
 
-                    //如果这个类 有一个构造方法是传入自己的父类，说明是一个包装类
-                    //class A implement Parent {
-                    //      private Parent p;
-                    //      A(Parent p){
-                    //          this.p = p
-                    //      }
-                    // }
-                    instance = injectExtension((T) wrapperClass.getConstructor(type).newInstance(instance));
+                    //用wrapper类的实例代替原有的instance ，但注意原有的instance作为wrapper的构造参数传入其内部了
+                    T t = (T) wrapperClass.getConstructor(type).newInstance(instance);
+                    instance = injectExtension(t);
                 }
             }
             return instance;
@@ -821,7 +841,23 @@ public class ExtensionLoader<T> {
                         + cachedAdaptiveClass.getClass().getName()
                         + ", " + clazz.getClass().getName());
             }
-        } else if (isWrapperClass(clazz)) {
+        }
+
+        else if (isWrapperClass(clazz)) {
+
+            /**
+            * liziq dubbo-wrapper 如果SPI的子类 是包装类，则缓存到 cachedWrapperClasses
+             * 比如 Protocol 接口有 n 个SPI子类（散落在 dubbo-rpc 模块下，各个子模块中。）：
+             *      filter=org.apache.dubbo.rpc.protocol.ProtocolFilterWrapper
+             *      listener=org.apache.dubbo.rpc.protocol.ProtocolListenerWrapper
+             *      mock=org.apache.dubbo.rpc.support.MockProtocol
+             *      dubbo=org.apache.dubbo.rpc.protocol.dubbo.DubboProtocol
+             *
+             * ProtocolFilterWrapper、ProtocolListenerWrapper 都是 wrapper类型
+             * 当我们获取 DubboProtocol时，会被作为构造函数
+             *          传入到 ProtocolFilterWrapper，包装为 ProtocolFilterWrapper
+             *          然后再传入 ProtocolListenerWrapper 包装
+             */
             Set<Class<?>> wrappers = cachedWrapperClasses;
             if (wrappers == null) {
                 cachedWrapperClasses = new ConcurrentHashSet<Class<?>>();
@@ -869,6 +905,7 @@ public class ExtensionLoader<T> {
 
     private boolean isWrapperClass(Class<?> clazz) {
         try {
+            //以 接口 为构造函数的 参数，说明是 wrapper 包装类
             clazz.getConstructor(type);
             return true;
         } catch (NoSuchMethodException e) {
