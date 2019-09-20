@@ -240,6 +240,13 @@ public class DubboProtocol extends AbstractProtocol {
         return DEFAULT_PORT;
     }
 
+
+
+    /**
+     * liziq 实际openServer 监听20880端口
+     * ProtocolListenerWrapper -》 ProtocolFilterWrapper -》 RegistryProtocol -》  Protocol$Adaptive(DubboProtocol)
+     *
+     * */
     @Override
     public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
         URL url = invoker.getUrl();
@@ -264,6 +271,7 @@ public class DubboProtocol extends AbstractProtocol {
             }
         }
 
+        //开启netty 服务监听指定端口，
         openServer(url);
         optimizeSerialization(url);
         return exporter;

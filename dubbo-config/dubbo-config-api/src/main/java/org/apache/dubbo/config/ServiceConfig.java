@@ -71,6 +71,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
 
     private static final long serialVersionUID = 3033787999037024738L;
 
+    /** 默认是 DubboProtocol */
     private static final Protocol protocol = ExtensionLoader.getExtensionLoader(Protocol.class).getAdaptiveExtension();
 
     private static final ProxyFactory proxyFactory = ExtensionLoader.getExtensionLoader(ProxyFactory.class).getAdaptiveExtension();
@@ -82,9 +83,12 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
     private final List<Exporter<?>> exporters = new ArrayList<Exporter<?>>();
     // interface type
     private String interfaceName;
+
+    /** 当前服务类的接口类型 */
     private Class<?> interfaceClass;
-    // reference to interface impl
+    /** 当前服务类的实例 */
     private T ref;
+
     // service name
     private String path;
     // method configuration
@@ -372,12 +376,19 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         }
     }
 
+
+    /**
+     * liziq 根据某一个协议暴露服务
+     * */
     private void doExportUrlsFor1Protocol(ProtocolConfig protocolConfig, List<URL> registryURLs) {
         String name = protocolConfig.getName();
         if (name == null || name.length() == 0) {
             name = "dubbo";
         }
 
+
+
+        //加参数
         Map<String, String> map = new HashMap<String, String>();
         map.put(Constants.SIDE_KEY, Constants.PROVIDER_SIDE);
         map.put(Constants.DUBBO_VERSION_KEY, Version.getProtocolVersion());
@@ -406,7 +417,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
                         // convert argument type
                         if (argument.getType() != null && argument.getType().length() > 0) {
                             Method[] methods = interfaceClass.getMethods();
-                            // visit all methods
+                            // 遍历所有方法，把方法加到url 参数上
                             if (methods != null && methods.length > 0) {
                                 for (int i = 0; i < methods.length; i++) {
                                     String methodName = methods[i].getName();
@@ -455,6 +466,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
                 map.put("revision", revision);
             }
 
+            //获取 接口的包装类
             String[] methods = Wrapper.getWrapper(interfaceClass).getMethodNames();
             if (methods.length == 0) {
                 logger.warn("NO method found in service interface " + interfaceClass.getName());
@@ -471,7 +483,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
             }
         }
 
-        //本地
+        //本地暴露时，不需要通知、不需要注册
         if (Constants.LOCAL_PROTOCOL.equals(protocolConfig.getName())) {
             protocolConfig.setRegister(false);
             map.put("notify", "false");
@@ -495,11 +507,14 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         }
 
         String scope = url.getParameter(Constants.SCOPE_KEY);
+
+        // scope 属性，1.不为none，如果不为 remote、local，则 本地、远程都暴露？
         // don't export when none is configured
         if (!Constants.SCOPE_NONE.equalsIgnoreCase(scope)) {
 
             // export to local if the config is not remote (export to remote only when config is remote)
             if (!Constants.SCOPE_REMOTE.equalsIgnoreCase(scope)) {
+                //本地暴露
                 exportLocal(url);
             }
             // export to remote if the config is not local (export to local only when config is local)
@@ -508,6 +523,8 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
                     logger.info("Export dubbo service " + interfaceClass.getName() + " to url " + url);
                 }
                 if (registryURLs != null && !registryURLs.isEmpty()) {
+
+                    //注册中心地址
                     for (URL registryURL : registryURLs) {
                         url = url.addParameterIfAbsent(Constants.DYNAMIC_KEY, registryURL.getParameter(Constants.DYNAMIC_KEY));
                         URL monitorUrl = loadMonitor(registryURL);
@@ -524,15 +541,24 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
                             registryURL = registryURL.addParameter(Constants.PROXY_KEY, proxy);
                         }
 
-                        Invoker<?> invoker = proxyFactory.getInvoker(ref, (Class) interfaceClass, registryURL.addParameterAndEncoded(Constants.EXPORT_KEY, url.toFullString()));
+
+                        //liziq 获取 ref 的代理可执行类 Invoker，通过这个Invoker .doInvoke()  可以执行 ref中的所有方法，即 可以通过这个Invoker
+                        //即 可以通过这个Invoker，传入不同的参数，就可以执行不同的方法
+                        Invoker<?> invoker = proxyFactory.getInvoker(ref,
+                                (Class) interfaceClass,
+                                registryURL.addParameterAndEncoded(Constants.EXPORT_KEY, url.toFullString()));
+
+
                         DelegateProviderMetaDataInvoker wrapperInvoker = new DelegateProviderMetaDataInvoker(invoker, this);
 
+                        //导出，Exporter 就是 Invoker
+                        //ProtocolListenerWrapper -》 ProtocolFilterWrapper -》 RegistryProtocol -》  Protocol$Adaptive(DubboProtocol)
                         Exporter<?> exporter = protocol.export(wrapperInvoker);
                         exporters.add(exporter);
                     }
                 } else {
 
-                    //获取
+
                     Invoker<?> invoker = proxyFactory.getInvoker(ref, (Class) interfaceClass, url);
                     DelegateProviderMetaDataInvoker wrapperInvoker = new DelegateProviderMetaDataInvoker(invoker, this);
 
@@ -544,16 +570,30 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         this.urls.add(url);
     }
 
+
+
+    /**
+     * liziq 本地 服务暴露
+     * 协议：injvm
+     * 相当于只需要 localhost 打开本地端口就行了。
+     * 本地暴露，不需要启动类似netty的服务器，也不需要注册zookeeper。
+     *
+     * consumer 调用时通过  localhost:port 调用
+     * */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void exportLocal(URL url) {
         if (!Constants.LOCAL_PROTOCOL.equalsIgnoreCase(url.getProtocol())) {
+
+            //url 上 加 protocol=injvm 参数，用于选择 SPI实现类：InjvmProtocol
             URL local = URL.valueOf(url.toFullString())
                     .setProtocol(Constants.LOCAL_PROTOCOL)
                     .setHost(LOCALHOST)
                     .setPort(0);
             ServiceClassHolder.getInstance().pushServiceClass(getServiceClass(ref));
-            Exporter<?> exporter = protocol.export(
-                    proxyFactory.getInvoker(ref, (Class) interfaceClass, local));
+
+            //通过 接口、服务类，生成一个代理类
+            Invoker invoker = proxyFactory.getInvoker(ref, (Class) interfaceClass, local);
+            Exporter<?> exporter = protocol.export(invoker);
             exporters.add(exporter);
             logger.info("Export dubbo service " + interfaceClass.getName() + " to local registry");
         }

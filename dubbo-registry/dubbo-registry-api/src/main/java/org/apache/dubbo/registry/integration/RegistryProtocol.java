@@ -54,6 +54,7 @@ import static org.apache.dubbo.common.Constants.QOS_PORT;
 import static org.apache.dubbo.common.Constants.VALIDATION_KEY;
 
 /**
+ * liziq 注册中心 协议，比如zookeeper
  * RegistryProtocol
  *
  */
@@ -62,12 +63,21 @@ public class RegistryProtocol implements Protocol {
     private final static Logger logger = LoggerFactory.getLogger(RegistryProtocol.class);
     private static RegistryProtocol INSTANCE;
     private final Map<URL, NotifyListener> overrideListeners = new ConcurrentHashMap<URL, NotifyListener>();
-    //To solve the problem of RMI repeated exposure port conflicts, the services that have been exposed are no longer exposed.
-    //providerurl <--> exporter
+    /**
+     //To solve the problem of RMI repeated exposure port conflicts, the services that have been exposed are no longer exposed.
+    缓存 providerurl <--> exporter */
     private final Map<String, ExporterChangeableWrapper<?>> bounds = new ConcurrentHashMap<String, ExporterChangeableWrapper<?>>();
     private Cluster cluster;
+
+    /** Protocol 执行实际的 服务监听，根据SPI，是 dubboProtocol */
     private Protocol protocol;
+
+    /** RegistryFactory 获取Registry，用来注册 服务的。根据URL上的 zookeeper，可以定位到 ZookeeperRegistryFactory
+     *  ZookeeperRegistryFactory 可以拿到 ZookeeperRegistry extends FailbackRegistry
+     * */
     private RegistryFactory registryFactory;
+
+
     private ProxyFactory proxyFactory;
 
     public RegistryProtocol() {
@@ -122,19 +132,26 @@ public class RegistryProtocol implements Protocol {
         return overrideListeners;
     }
 
+
+    /**
+     * liziq 把URL 注册到 注册中心
+     * */
     public void register(URL registryUrl, URL registedProviderUrl) {
+        //ZookeeperRegistryFactory 获取到  ZookeeperRegistry extends FailbackRegistry
         Registry registry = registryFactory.getRegistry(registryUrl);
         registry.register(registedProviderUrl);
     }
 
     @Override
     public <T> Exporter<T> export(final Invoker<T> originInvoker) throws RpcException {
-        //export invoker
+        //打开本地 监听服务。即 DubboProtocol 干的事
         final ExporterChangeableWrapper<T> exporter = doLocalExport(originInvoker);
 
+        //注册中心
         URL registryUrl = getRegistryUrl(originInvoker);
 
         //registry provider
+        // liziq 注册中心，初始化时，就会连接注册中心
         final Registry registry = getRegistry(originInvoker);
         final URL registeredProviderUrl = getRegisteredProviderUrl(originInvoker);
 
@@ -143,16 +160,24 @@ public class RegistryProtocol implements Protocol {
 
         ProviderConsumerRegTable.registerProvider(originInvoker, registryUrl, registeredProviderUrl);
 
+        //注册到注册中心
         if (register) {
             register(registryUrl, registeredProviderUrl);
             ProviderConsumerRegTable.getProviderWrapper(originInvoker).setReg(true);
         }
 
         // Subscribe the override data
-        // FIXME When the provider subscribes, it will affect the scene : a certain JVM exposes the service and call the same service. Because the subscribed is cached key with the name of the service, it causes the subscription information to cover.
+        // FIXME When the provider subscribes, it will affect the scene :
+        //  a certain JVM exposes the service and call the same service.
+        //  Because the subscribed is cached key with the name of the service, it causes the subscription information to cover.
         final URL overrideSubscribeUrl = getSubscribedOverrideUrl(registeredProviderUrl);
+
+
+        //liziq 订阅注册中心 的变更消息
         final OverrideListener overrideSubscribeListener = new OverrideListener(overrideSubscribeUrl, originInvoker);
         overrideListeners.put(overrideSubscribeUrl, overrideSubscribeListener);
+
+        //订阅
         registry.subscribe(overrideSubscribeUrl, overrideSubscribeListener);
         //Ensure that a new exporter instance is returned every time export
         return new DestroyableExporter<T>(exporter, originInvoker, overrideSubscribeUrl, registeredProviderUrl);

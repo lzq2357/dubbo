@@ -87,7 +87,7 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
     // module info
     protected ModuleConfig module;
 
-    // registry centers
+    /** 注册中心地址 */
     protected List<RegistryConfig> registries;
 
     // connection events
@@ -156,6 +156,11 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
         }
     }
 
+
+
+    /**
+     * liziq 获取注册中心地址
+     * */
     protected List<URL> loadRegistries(boolean provider) {
         checkRegistry();
         List<URL> registryList = new ArrayList<URL>();

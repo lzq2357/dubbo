@@ -55,7 +55,10 @@ public class DubboRegistryFactory extends AbstractRegistryFactory {
                 .addParameterIfAbsent(Constants.TIMEOUT_KEY, "10000")
                 .addParameterIfAbsent(Constants.CALLBACK_INSTANCES_LIMIT_KEY, "10000")
                 .addParameterIfAbsent(Constants.CONNECT_TIMEOUT_KEY, "10000")
-                .addParameter(Constants.METHODS_KEY, StringUtils.join(new HashSet<String>(Arrays.asList(Wrapper.getWrapper(RegistryService.class).getDeclaredMethodNames())), ","))
+                .addParameter(Constants.METHODS_KEY, StringUtils.join(
+                        new HashSet<String>( Arrays.asList(Wrapper.getWrapper(RegistryService.class).getDeclaredMethodNames()) ),
+                        ",")
+                )
                 //.addParameter(Constants.STUB_KEY, RegistryServiceStub.class.getName())
                 //.addParameter(Constants.STUB_EVENT_KEY, Boolean.TRUE.toString()) //for event dispatch
                 //.addParameter(Constants.ON_DISCONNECT_KEY, "disconnect")

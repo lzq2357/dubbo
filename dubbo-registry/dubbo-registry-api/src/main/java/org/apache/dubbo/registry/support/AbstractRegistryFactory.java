@@ -80,6 +80,12 @@ public abstract class AbstractRegistryFactory implements RegistryFactory {
         }
     }
 
+
+
+    /**
+     * 多个 Registry 的公用方法。 调用 createRegistry
+     * createRegistry：虚方法，子类实现
+     * */
     @Override
     public Registry getRegistry(URL url) {
         url = url.setPath(RegistryService.class.getName())
@@ -93,6 +99,8 @@ public abstract class AbstractRegistryFactory implements RegistryFactory {
             if (registry != null) {
                 return registry;
             }
+
+            //创建一个注册中心客户端 （有缓存的），不同注册中心 不同，比如zk
             registry = createRegistry(url);
             if (registry == null) {
                 throw new IllegalStateException("Can not create registry " + url);

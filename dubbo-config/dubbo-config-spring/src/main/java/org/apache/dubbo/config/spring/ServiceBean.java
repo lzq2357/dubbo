@@ -137,6 +137,12 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
         return supportedApplicationListener && (delay == null || delay == -1);
     }
 
+
+
+    /**
+     * liziq 设置服务的 属性，比如注册中心地址
+     *
+     * */
     @Override
     @SuppressWarnings({"unchecked", "deprecation"})
     public void afterPropertiesSet() throws Exception {
@@ -219,6 +225,8 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
                     }
                 }
                 if (!registryConfigs.isEmpty()) {
+
+                    //设置注册中心地址
                     super.setRegistries(registryConfigs);
                 }
             }

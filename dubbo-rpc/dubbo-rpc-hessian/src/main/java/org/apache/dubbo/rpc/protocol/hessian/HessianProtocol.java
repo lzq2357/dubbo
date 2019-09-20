@@ -68,6 +68,10 @@ public class HessianProtocol extends AbstractProxyProtocol {
         return 80;
     }
 
+
+    /**
+     *
+     * */
     @Override
     protected <T> Runnable doExport(T impl, Class<T> type, URL url) throws RpcException {
         String addr = getAddr(url);

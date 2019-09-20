@@ -22,6 +22,14 @@ import org.apache.dubbo.common.extension.SPI;
 
 /**
  * Protocol. (API/SPI, Singleton, ThreadSafe)
+ *
+ * 通过protocol接口，暴露服务。 根据配置有注册中心，所以 SPI获取 RegistryProtocol，RegistryProtocol里面又SPI获取 到默认的 DubboProtocol
+ * 	然后 因为有几个包装类，所以：
+ * 	ProtocolListenerWrapper -》 ProtocolFilterWrapper -》 RegistryProtocol -》  Protocol$Adaptive(DubboProtocol)
+ *
+ * DubboProtocol：实际openServer 监听20880端口
+ * RegistryProtocol：调用 DubboProtocol开启 端口，然后把 URL写入到 注册中心。
+ *
  */
 @SPI("dubbo")
 public interface Protocol {

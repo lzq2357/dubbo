@@ -35,6 +35,18 @@ public class JavassistProxyFactory extends AbstractProxyFactory {
         return (T) Proxy.getProxy(interfaces).newInstance(new InvokerInvocationHandler(invoker));
     }
 
+
+
+    /**
+     * liziq 获取 proxy 类型的 wrapper 包装类，实际就是 生成proxy子类，然后新增3个主要方法：
+     *      setPropertyValue，getPropertyValue，invokeMethod
+     *      然后返回一个Invoker，这个 Invoker.doInvoke() 通过参数，去操作 proxy 的属性，执行 proxy 的方法
+     *      可以通过这个Invoker，传入不同的参数，就可以执行 proxy 不同的方法
+     *
+     * @param proxy ：被代理的 实例，如果实例类名称 含有$，则代理接口
+     * @param type ：被代理类的 接口
+     * @param url ：url，根据url选择 ProxyFactory SPI
+     * */
     @Override
     public <T> Invoker<T> getInvoker(T proxy, Class<T> type, URL url) {
         // TODO Wrapper cannot handle this scenario correctly: the classname contains '$'

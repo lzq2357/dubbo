@@ -92,9 +92,9 @@ public abstract class Wrapper {
     /**
      * get wrapper.
      *
-     * 获取包装类，并缓存
+     * liziq 获取包装类，并缓存
      *
-     * makeWrapper：字节码操作生成 包装类
+     * makeWrapper：通过反射等，生成 包装类
      *
      * @param c Class instance.
      * @return Wrapper instance(not null).
@@ -108,12 +108,29 @@ public abstract class Wrapper {
 
         Wrapper ret = WRAPPER_MAP.get(c);
         if (ret == null) {
+            //生成包装类
             ret = makeWrapper(c);
             WRAPPER_MAP.put(c, ret);
         }
         return ret;
     }
 
+
+    /**
+     * 结果参考：Wrapper0类
+     *
+     * liziq 获取包装类， 写入三个主要方法  setPropertyValue，getPropertyValue，invokeMethod
+     *
+     * 比如：Car是接口；Car1、Car2 是实现类，  c1、c2分别是实现类的实例
+     *      makeWrapper(Car)，会生成一个 Car的实现类，假设名称为 Wrapper0、以及实例 wrapper0
+     *
+     *  setPropertyValue、getPropertyValue： 可 修改读取 Car 的所有属性
+     *  invokeMethod：可调用所有方法
+     *
+     *
+     * 优点：通过一个Wrapper0 实例的 3个方法，就可以操作Car实例的多个属性、执行多个方法。
+     *
+     * */
     private static Wrapper makeWrapper(Class<?> c) {
         if (c.isPrimitive())
             throw new IllegalArgumentException("Can not create wrapper for primitive type: " + c);
@@ -121,6 +138,8 @@ public abstract class Wrapper {
         String name = c.getName();
         ClassLoader cl = ClassHelper.getClassLoader(c);
 
+
+        // 重写三个主要方法  setPropertyValue，getPropertyValue，invokeMethod
         StringBuilder c1 = new StringBuilder("public void setPropertyValue(Object o, String n, Object v){ ");
         StringBuilder c2 = new StringBuilder("public Object getPropertyValue(Object o, String n){ ");
         StringBuilder c3 = new StringBuilder("public Object invokeMethod(Object o, String n, Class[] p, Object[] v) throws " + InvocationTargetException.class.getName() + "{ ");
@@ -129,10 +148,14 @@ public abstract class Wrapper {
         c2.append(name).append(" w; try{ w = ((").append(name).append(")$1); }catch(Throwable e){ throw new IllegalArgumentException(e); }");
         c3.append(name).append(" w; try{ w = ((").append(name).append(")$1); }catch(Throwable e){ throw new IllegalArgumentException(e); }");
 
-        Map<String, Class<?>> pts = new HashMap<String, Class<?>>(); // <property name, property types>
-        Map<String, Method> ms = new LinkedHashMap<String, Method>(); // <method desc, Method instance>
-        List<String> mns = new ArrayList<String>(); // method names.
-        List<String> dmns = new ArrayList<String>(); // declaring method names.
+        // <property name, property types>
+        Map<String, Class<?>> pts = new HashMap<String, Class<?>>();
+        // <method desc, Method instance>
+        Map<String, Method> ms = new LinkedHashMap<String, Method>();
+        // method names.
+        List<String> mns = new ArrayList<String>();
+        // declaring method names.
+        List<String> dmns = new ArrayList<String>();
 
         // get all public field.
         for (Field f : c.getFields()) {
@@ -153,7 +176,9 @@ public abstract class Wrapper {
             c3.append(" try{");
         }
         for (Method m : methods) {
-            if (m.getDeclaringClass() == Object.class) //ignore Object's method.
+            //ignore Object's method.
+            //忽略 object的方法
+            if (m.getDeclaringClass() == Object.class)
                 continue;
 
             String mn = m.getName();
@@ -199,7 +224,7 @@ public abstract class Wrapper {
 
         c3.append(" throw new " + NoSuchMethodException.class.getName() + "(\"Not found method \\\"\"+$2+\"\\\" in class " + c.getName() + ".\"); }");
 
-        // deal with get/set method.
+        // 处理 setter /getter方法
         Matcher matcher;
         for (Map.Entry<String, Method> entry : ms.entrySet()) {
             String md = entry.getKey();
@@ -229,13 +254,28 @@ public abstract class Wrapper {
         cc.setSuperClass(Wrapper.class);
 
         cc.addDefaultConstructor();
-        cc.addField("public static String[] pns;"); // property name array.
-        cc.addField("public static " + Map.class.getName() + " pts;"); // property type map.
-        cc.addField("public static String[] mns;"); // all method name array.
-        cc.addField("public static String[] dmns;"); // declared method name array.
-        for (int i = 0, len = ms.size(); i < len; i++)
-            cc.addField("public static Class[] mts" + i + ";");
 
+        /**
+         * String[] pns: 属性名称集合
+         * String[] mns: 方法名称集合
+         * String[] dmns: 定义的方法集合
+         * Map pts: 属性名称-类型 map
+         * */
+
+        // property name array.
+        cc.addField("public static String[] pns;");
+
+        // property type map.
+        cc.addField("public static " + Map.class.getName() + " pts;");
+
+        // all method name array.
+        cc.addField("public static String[] mns;");
+
+        // declared method name array.
+        cc.addField("public static String[] dmns;");
+        for (int i = 0, len = ms.size(); i < len; i++) {
+            cc.addField("public static Class[] mts" + i + ";");
+        }
         cc.addMethod("public String[] getPropertyNames(){ return pns; }");
         cc.addMethod("public boolean hasProperty(String n){ return pts.containsKey($1); }");
         cc.addMethod("public Class getPropertyType(String n){ return (Class)pts.get($1); }");
@@ -245,16 +285,18 @@ public abstract class Wrapper {
         cc.addMethod(c2.toString());
         cc.addMethod(c3.toString());
 
+
         try {
             Class<?> wc = cc.toClass();
-            // setup static field.
+            // 设置静态属性的 值
             wc.getField("pts").set(null, pts);
             wc.getField("pns").set(null, pts.keySet().toArray(new String[0]));
             wc.getField("mns").set(null, mns.toArray(new String[0]));
             wc.getField("dmns").set(null, dmns.toArray(new String[0]));
             int ix = 0;
-            for (Method m : ms.values())
+            for (Method m : ms.values()) {
                 wc.getField("mts" + ix++).set(null, m.getParameterTypes());
+            }
             return (Wrapper) wc.newInstance();
         } catch (RuntimeException e) {
             throw e;
