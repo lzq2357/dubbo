@@ -75,11 +75,11 @@ public class ExceptionFilter extends AbstractPostProcessFilter {
             try {
                 Throwable exception = result.getException();
 
-                // directly throw if it's checked exception
+                // 如果是checked异常，直接抛出
                 if (!(exception instanceof RuntimeException) && (exception instanceof Exception)) {
                     return result;
                 }
-                // directly throw if the exception appears in the signature
+                // 如果是接口上声明的异常，直接抛出
                 try {
                     Method method = invoker.getInterface().getMethod(invocation.getMethodName(), invocation.getParameterTypes());
                     Class<?>[] exceptionClassses = method.getExceptionTypes();
@@ -92,28 +92,29 @@ public class ExceptionFilter extends AbstractPostProcessFilter {
                     return result;
                 }
 
-                // for the exception not found in method's signature, print ERROR message in server's log.
+                // 非接口上声明的异常
                 logger.error("Got unchecked and undeclared exception which called by " + RpcContext.getContext().getRemoteHost()
                         + ". service: " + invoker.getInterface().getName() + ", method: " + invocation.getMethodName()
                         + ", exception: " + exception.getClass().getName() + ": " + exception.getMessage(), exception);
 
-                // directly throw if exception class and interface class are in the same jar file.
+                // 异常类和接口类在同一jar包里，直接抛出
                 String serviceFile = ReflectUtils.getCodeBase(invoker.getInterface());
                 String exceptionFile = ReflectUtils.getCodeBase(exception.getClass());
                 if (serviceFile == null || exceptionFile == null || serviceFile.equals(exceptionFile)) {
                     return result;
                 }
-                // directly throw if it's JDK exception
+                // 是JDK自带的异常，直接抛出
                 String className = exception.getClass().getName();
                 if (className.startsWith("java.") || className.startsWith("javax.")) {
                     return result;
                 }
-                // directly throw if it's dubbo exception
+                // 是Dubbo本身的异常，直接抛出
                 if (exception instanceof RpcException) {
                     return result;
                 }
 
-                // otherwise, wrap with RuntimeException and throw back to the client
+                // liziq 否则，包装成RuntimeException抛给客户端
+                // 原因：dubbo认为这是一个provider端自定义的异常，如果直接抛出去，客户端无法序列化
                 return new RpcResult(new RuntimeException(StringUtils.toString(exception)));
             } catch (Throwable e) {
                 logger.warn("Fail to ExceptionFilter when called by " + RpcContext.getContext().getRemoteHost()
