@@ -32,12 +32,17 @@ import java.util.List;
  * <a href="http://en.wikipedia.org/wiki/Load_balancing_(computing)">Load-Balancing</a>
  *
  * @see org.apache.dubbo.rpc.cluster.Cluster#join(Directory)
+ *
+ *
+ * liziq 负载均衡，SPI默认是 RandomLoadBalance
  */
 @SPI(RandomLoadBalance.NAME)
 public interface LoadBalance {
 
     /**
      * select one invoker in list.
+     *
+     * 实际执行的 是 doSelect()
      *
      * @param invokers   invokers.
      * @param url        refer url

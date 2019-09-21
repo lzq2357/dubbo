@@ -42,6 +42,8 @@ public interface Directory<T> extends Node {
     /**
      * list invokers.
      *
+     * liziq Directory接口：获取 List<Invoker>
+     *
      * @return invokers
      */
     List<Invoker<T>> list(Invocation invocation) throws RpcException;

@@ -54,8 +54,22 @@ import static org.apache.dubbo.common.Constants.QOS_PORT;
 import static org.apache.dubbo.common.Constants.VALIDATION_KEY;
 
 /**
- * liziq 注册中心 协议，比如zookeeper
- * RegistryProtocol
+ * liziq 注册中心 协议，比如 如果用的是 zookeeper
+ * 那URL上：zookeeper:eee
+ *
+ *
+ * RegistryProtocol 持有一个 Protocol，根据SPI，是 dubboProtocol
+ * 所以 dubboProtocol 才是实际进行 服务暴露、服务引用的干活的类
+ *
+ * RegistryProtocol 还有一个 RegistryFactory，获取到一个 Registry，注册中心客户端，通过 URL上的 zookeeper，获取到 ZookeeperRegistry
+ * 通过这个 Registry 来注册服务、发现服务
+ *      ZookeeperRegistry extends FailbackRegistry
+ *
+ * ProxyFactory ：用来生成 接口的代理。根据SPI，默认是 javassistProxyFactory
+ *  它生成的代理类就是 Invoker，通过这个Invoker，传入不同的参数，就可以执行 proxy 不同的方法
+ *
+ * Cluster：是一系列 List<Invoker>
+ *     RegistryProtocol初始化时，会通过 inject() 注入 Cluster，通过SPI，知道默认是 FailoverCluster
  *
  */
 public class RegistryProtocol implements Protocol {
@@ -65,11 +79,15 @@ public class RegistryProtocol implements Protocol {
     private final Map<URL, NotifyListener> overrideListeners = new ConcurrentHashMap<URL, NotifyListener>();
     /**
      //To solve the problem of RMI repeated exposure port conflicts, the services that have been exposed are no longer exposed.
-    缓存 providerurl <--> exporter */
+        缓存 providerurl <--> exporter
+     */
     private final Map<String, ExporterChangeableWrapper<?>> bounds = new ConcurrentHashMap<String, ExporterChangeableWrapper<?>>();
+
+
+    /** RegistryProtocol初始化时，会通过 inject() 注入 Cluster，通过SPI，知道默认是 FailoverCluster */
     private Cluster cluster;
 
-    /** Protocol 执行实际的 服务监听，根据SPI，是 dubboProtocol */
+    /** Protocol 执行实际的 暴露服务、引用服务，根据SPI，是 dubboProtocol */
     private Protocol protocol;
 
     /** RegistryFactory 获取Registry，用来注册 服务的。根据URL上的 zookeeper，可以定位到 ZookeeperRegistryFactory
@@ -77,7 +95,10 @@ public class RegistryProtocol implements Protocol {
      * */
     private RegistryFactory registryFactory;
 
-
+    /**
+     * 用来生成 接口的代理。根据SPI，默认是 javassistProxyFactory
+     * 它生成的代理类就是 Invoker，通过这个Invoker，传入不同的参数，就可以执行 proxy 不同的方法
+     * */
     private ProxyFactory proxyFactory;
 
     public RegistryProtocol() {
@@ -142,6 +163,11 @@ public class RegistryProtocol implements Protocol {
         registry.register(registedProviderUrl);
     }
 
+
+
+    /**
+     * liziq 远程暴露：先本地监听、再注册到zk
+     * */
     @Override
     public <T> Exporter<T> export(final Invoker<T> originInvoker) throws RpcException {
         //打开本地 监听服务。即 DubboProtocol 干的事
@@ -293,15 +319,29 @@ public class RegistryProtocol implements Protocol {
         return key;
     }
 
+
+
+
+
+
+    /**
+     * liziq 返回一个 Invoker，服务引用
+     * 这里是集群，返回的是一个 ClusterInvoker，ClusterInvoker内持有一个 Directory，它能list 列出所有的Invoker
+     * 即：ClusterInvoker 是一个 List<Invoker>
+     * */
     @Override
     @SuppressWarnings("unchecked")
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
         url = url.setProtocol(url.getParameter(Constants.REGISTRY_KEY, Constants.DEFAULT_REGISTRY)).removeParameter(Constants.REGISTRY_KEY);
         Registry registry = registryFactory.getRegistry(url);
+
+        //如果是一个  RegistryService，就直接返返回
         if (RegistryService.class.equals(type)) {
             return proxyFactory.getInvoker((T) registry, type, url);
         }
 
+
+        //处理 consumer 上的分组 ，group 只能引用同一个 group
         // group="a,b" or group="*"
         Map<String, String> qs = StringUtils.parseQueryString(url.getParameterAndDecoded(Constants.REFER_KEY));
         String group = qs.get(Constants.GROUP_KEY);
@@ -318,23 +358,40 @@ public class RegistryProtocol implements Protocol {
         return ExtensionLoader.getExtensionLoader(Cluster.class).getExtension("mergeable");
     }
 
+
+    /**
+     * liziq 引用服务
+     * */
     private <T> Invoker<T> doRefer(Cluster cluster, Registry registry, Class<T> type, URL url) {
+
+        //RegistryDirectory 代表了集群内的一系列Invoker，  AbstractDirectory.list()获取
         RegistryDirectory<T> directory = new RegistryDirectory<T>(type, url);
         directory.setRegistry(registry);
         directory.setProtocol(protocol);
+
+
         // all attributes of REFER_KEY
         Map<String, String> parameters = new HashMap<String, String>(directory.getUrl().getParameters());
         URL subscribeUrl = new URL(Constants.CONSUMER_PROTOCOL, parameters.remove(Constants.REGISTER_IP_KEY), 0, type.getName(), parameters);
         if (!Constants.ANY_VALUE.equals(url.getServiceInterface())
                 && url.getParameter(Constants.REGISTER_KEY, true)) {
+
+            //注册这个consumer 到 zk的 consumer 目录下
             registry.register(subscribeUrl.addParameters(Constants.CATEGORY_KEY, Constants.CONSUMERS_CATEGORY,
                     Constants.CHECK_KEY, String.valueOf(false)));
         }
+
+        //通过 RegistryDirectory#subscribeUrl() 向 Zookeeper 订阅服务节点信息并 watch 变更，这样就实现了服务自动发现。
         directory.subscribe(subscribeUrl.addParameter(Constants.CATEGORY_KEY,
                 Constants.PROVIDERS_CATEGORY
                         + "," + Constants.CONFIGURATORS_CATEGORY
                         + "," + Constants.ROUTERS_CATEGORY));
 
+
+        //获取一个 Invoker，这个 返回的是一个 ClusterInvoker，持有 directory，directory.list()能返回集群所有的 Invoker()
+        //根据SPI，是 FailoverCluster，最终选择 FailoverClusterInvoker extends AbstractClusterInvoker
+
+        //所以这个 ClusterInvoker，代表了 List<Invoker>，最终执行时，还需要选择
         Invoker invoker = cluster.join(directory);
         ProviderConsumerRegTable.registerConsumer(invoker, url, subscribeUrl, directory);
         return invoker;

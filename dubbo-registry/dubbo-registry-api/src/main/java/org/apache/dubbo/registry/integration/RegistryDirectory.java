@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
+ * liziq 单注册中心的 Directory，实现了 NotifyListener 接受实时推送
  * RegistryDirectory
  */
 public class RegistryDirectory<T> extends AbstractDirectory<T> implements NotifyListener {
@@ -179,6 +180,10 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
         }
     }
 
+
+    /**
+     * liziq 集群上的修改通知
+     * */
     @Override
     public synchronized void notify(List<URL> urls) {
         List<URL> invokerUrls = new ArrayList<URL>();
@@ -577,13 +582,15 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
                             + " use dubbo version " + Version.getVersion() + ", please check status of providers(disabled, not registered or in blacklist).");
         }
         List<Invoker<T>> invokers = null;
-        Map<String, List<Invoker<T>>> localMethodInvokerMap = this.methodInvokerMap; // local reference
+        // local reference
+        Map<String, List<Invoker<T>>> localMethodInvokerMap = this.methodInvokerMap;
         if (localMethodInvokerMap != null && localMethodInvokerMap.size() > 0) {
             String methodName = RpcUtils.getMethodName(invocation);
             Object[] args = RpcUtils.getArguments(invocation);
             if (args != null && args.length > 0 && args[0] != null
                     && (args[0] instanceof String || args[0].getClass().isEnum())) {
-                invokers = localMethodInvokerMap.get(methodName + "." + args[0]); // The routing can be enumerated according to the first parameter
+                // The routing can be enumerated according to the first parameter
+                invokers = localMethodInvokerMap.get(methodName + "." + args[0]);
             }
             if (invokers == null) {
                 invokers = localMethodInvokerMap.get(methodName);

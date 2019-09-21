@@ -28,6 +28,12 @@ import org.apache.dubbo.rpc.cluster.support.FailoverCluster;
  * <a href="http://en.wikipedia.org/wiki/Computer_cluster">Cluster</a>
  * <a href="http://en.wikipedia.org/wiki/Fault-tolerant_system">Fault-Tolerant</a>
  *
+ *
+ * liziq 根据SPI，是 FailoverCluster，但是有一个 MockClusterWrapper 包装
+ * 所以最后返回的是 MockClusterWrapper
+ * 干活的是： MockClusterWrapper -> MockClusterInvoker -> FailoverCluster
+ *          最终默认选择 FailoverClusterInvoker
+ *
  */
 @SPI(FailoverCluster.NAME)
 public interface Cluster {

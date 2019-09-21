@@ -61,6 +61,12 @@ public class ReferenceBean<T> extends ReferenceConfig<T> implements FactoryBean,
         SpringExtensionFactory.addApplicationContext(applicationContext);
     }
 
+
+
+    /**
+     * liziq ReferenceBean 实现 FactoryBean，在spring完成初始化后，回调
+     * 触发 ReferenceConfig.init()，从而引用服务
+     * */
     @Override
     public Object getObject() throws Exception {
         return get();

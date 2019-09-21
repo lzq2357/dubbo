@@ -24,7 +24,11 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * random load balance.
+ * liziq 随机权重
+ *
+ * 假设有四个集群节点A,B,C,D,对应的权重分别是1,2,3,4,那么总权重10。请求到A概率：1/10 = 10%.B,C,D节点依次类推为20%,30%,40%
+ *     实现原理：根据10随机出一个整数,假如为随机出来的是2.然后依次和权重相减，直到小于0.
+ *             比如2(随机数)-1(A的权重) = 1,然后1(上一步计算的结果)-2(B的权重) = -1,此时-1 < 0,那么则调用B
  *
  */
 public class RandomLoadBalance extends AbstractLoadBalance {
@@ -33,12 +37,18 @@ public class RandomLoadBalance extends AbstractLoadBalance {
 
     @Override
     protected <T> Invoker<T> doSelect(List<Invoker<T>> invokers, URL url, Invocation invocation) {
-        int length = invokers.size(); // Number of invokers
-        int totalWeight = 0; // The sum of weights
-        boolean sameWeight = true; // Every invoker has the same weight?
+        // Number of invokers
+        int length = invokers.size();
+
+        // The sum of weights
+        int totalWeight = 0;
+
+        // Every invoker has the same weight?
+        boolean sameWeight = true;
         for (int i = 0; i < length; i++) {
             int weight = getWeight(invokers.get(i), invocation);
-            totalWeight += weight; // Sum
+            // Sum
+            totalWeight += weight;
             if (sameWeight && i > 0
                     && weight != getWeight(invokers.get(i - 1), invocation)) {
                 sameWeight = false;

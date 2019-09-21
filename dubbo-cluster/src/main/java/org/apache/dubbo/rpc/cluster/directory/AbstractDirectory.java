@@ -48,6 +48,10 @@ public abstract class AbstractDirectory<T> implements Directory<T> {
 
     private volatile URL consumerUrl;
 
+    /**
+     * liziq ConditionRouter(条件路由),条件路由主要就是根据dubbo管理控制台配置的路由规则来过滤相关的invoker,
+     * 当我们对路由规则点击启用的时候,就会触发RegistryDirectory类的notify方法
+     * */
     private volatile List<Router> routers;
 
     public AbstractDirectory(URL url) {
@@ -66,13 +70,19 @@ public abstract class AbstractDirectory<T> implements Directory<T> {
         setRouters(routers);
     }
 
+
+    /**
+     * 通过directory 获取所有的invoker，然后再 通过 router 过滤
+     * */
     @Override
     public List<Invoker<T>> list(Invocation invocation) throws RpcException {
         if (destroyed) {
             throw new RpcException("Directory already destroyed .url: " + getUrl());
         }
         List<Invoker<T>> invokers = doList(invocation);
-        List<Router> localRouters = this.routers; // local reference
+
+        // local reference
+        List<Router> localRouters = this.routers;
         if (localRouters != null && !localRouters.isEmpty()) {
             for (Router router : localRouters) {
                 try {

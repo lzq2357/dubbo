@@ -46,7 +46,11 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
 
     private static final Logger logger = LoggerFactory
             .getLogger(AbstractClusterInvoker.class);
+
+
+    /** 根据URL，协议，是RegistryDirectory */
     protected final Directory<T> directory;
+
 
     protected final boolean availablecheck;
 
@@ -232,7 +236,11 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
             ((RpcInvocation) invocation).addAttachments(contextAttachments);
         }
 
+
+        //使用 Directory.list()
         List<Invoker<T>> invokers = list(invocation);
+
+        //liziq 获取软负载均衡器
         LoadBalance loadbalance = initLoadBalance(invokers, invocation);
         RpcUtils.attachInvocationIdIfAsync(getUrl(), invocation);
         return doInvoke(invocation, invokers, loadbalance);

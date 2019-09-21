@@ -57,7 +57,7 @@ import java.util.Properties;
 import static org.apache.dubbo.common.utils.NetUtils.isInvalidLocalHost;
 
 /**
- * ReferenceConfig
+ * liziq 引用的配置 等信息 ReferenceConfig
  *
  * @export
  */
@@ -70,25 +70,46 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
     private static final Cluster cluster = ExtensionLoader.getExtensionLoader(Cluster.class).getAdaptiveExtension();
 
     private static final ProxyFactory proxyFactory = ExtensionLoader.getExtensionLoader(ProxyFactory.class).getAdaptiveExtension();
+
     private final List<URL> urls = new ArrayList<URL>();
-    // interface name
+
+
+
+    /** dubbo:reference 里面  接口的名称 */
     private String interfaceName;
+
+    /** dubbo:reference 里面  接口的类型 */
     private Class<?> interfaceClass;
     private Class<?> asyncInterfaceClass;
+
     // client type
     private String client;
+
     // url for peer-to-peer invocation
     private String url;
-    // method configs
+
+    /** dubbo-method  的配置  */
     private List<MethodConfig> methods;
-    // default config
+
+
+    /** dubbo-consumer的配置  */
     private ConsumerConfig consumer;
+
     private String protocol;
-    // interface proxy reference
+    /**
+     * interface proxy reference
+     * 接口的引用
+     * */
     private transient volatile T ref;
+
+    /** 远程的接口实现类引用 */
     private transient volatile Invoker<?> invoker;
+
+    /** 标记是否 已初始化 */
     private transient volatile boolean initialized;
     private transient volatile boolean destroyed;
+
+
     @SuppressWarnings("unused")
     private final Object finalizerGuardian = new Object() {
         @Override
@@ -162,6 +183,7 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
             throw new IllegalStateException("Already destroyed!");
         }
         if (ref == null) {
+            //初始化 ref，核心方法
             init();
         }
         return ref;
@@ -184,6 +206,11 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         ref = null;
     }
 
+
+
+    /**
+     * liziq  开始初始化 referenceBean
+     * */
     private void init() {
         if (initialized) {
             return;
@@ -202,6 +229,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
             interfaceClass = GenericService.class;
         } else {
             try {
+
+                //加载 接口类型
                 interfaceClass = Class.forName(interfaceName, true, Thread.currentThread()
                         .getContextClassLoader());
             } catch (ClassNotFoundException e) {
@@ -308,6 +337,9 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         appendParameters(map, consumer, Constants.DEFAULT_KEY);
         appendParameters(map, this);
         String prefix = StringUtils.getServiceKey(map);
+
+
+        //处理 consumer 端，对单个方法的配置，比如 重试次数、超时时间等
         if (methods != null && !methods.isEmpty()) {
             for (MethodConfig method : methods) {
                 appendParameters(map, method, method.getName());
@@ -333,7 +365,11 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
 
         //attributes are stored by system context.
         StaticContext.getSystemContext().putAll(attributes);
+
+        //创建 引用代理
         ref = createProxy(map);
+
+
         ConsumerModel consumerModel = new ConsumerModel(getUniqueServiceName(), this, ref, interfaceClass.getMethods());
         ApplicationModel.initConsumerModel(getUniqueServiceName(), consumerModel);
     }
@@ -343,7 +379,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         URL tmpUrl = new URL("temp", "localhost", 0, map);
         final boolean isJvmRefer;
         if (isInjvm() == null) {
-            if (url != null && url.length() > 0) { // if a url is specified, don't do local reference
+            // if a url is specified, don't do local reference
+            if (url != null && url.length() > 0) {
                 isJvmRefer = false;
             } else {
                 // by default, reference local service if there is
@@ -360,7 +397,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                 logger.info("Using injvm service " + interfaceClass.getName());
             }
         } else {
-            if (url != null && url.length() > 0) { // user specified URL, could be peer-to-peer address, or register center's address.
+            // user specified URL, could be peer-to-peer address, or register center's address.
+            if (url != null && url.length() > 0) {
                 String[] us = Constants.SEMICOLON_SPLIT_PATTERN.split(url);
                 if (us != null && us.length > 0) {
                     for (String u : us) {
@@ -391,6 +429,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                 }
             }
 
+
+            //liziq 获取 服务引用
             if (urls.size() == 1) {
                 invoker = refprotocol.refer(interfaceClass, urls.get(0));
             } else {

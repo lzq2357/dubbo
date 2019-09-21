@@ -26,8 +26,16 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * LeastActiveLoadBalance
+ * liziq 最少活跃调用数算法的 。使慢的提供者收到更少请求
+ *         每个服务有一个活跃计数器，提供者开始处理请求,该计数+1, 处理完成后，计数-1。
  *
+ * 最小活跃数的invoker统计到leastIndexs数组中,
+ * 如果权重一致或者总权重为0,则均等随机调用
+ * 如果权重不同,则从leastIndexs数组中按照权重比例调用(还是和随机算法中的那个依次相减的思路一样)
+ *
+ * 假设A,B,C,D节点的最小活跃数分别是1,1,2,3,权重为1,2,3,4.
+ * 则leastIndexs数组内容为[A,B]
+ * A,B的权重是1和2,所以调用A的概率为 1/(1+2) = 1/3,B的概率为 2/(1+2) = 2/3
  */
 public class LeastActiveLoadBalance extends AbstractLoadBalance {
 
