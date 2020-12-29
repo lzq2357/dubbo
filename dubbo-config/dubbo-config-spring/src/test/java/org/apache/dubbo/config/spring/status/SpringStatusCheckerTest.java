@@ -18,29 +18,43 @@ package org.apache.dubbo.config.spring.status;
 
 import org.apache.dubbo.common.status.Status;
 import org.apache.dubbo.config.spring.ServiceBean;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.dubbo.config.spring.extension.SpringExtensionFactory;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.Lifecycle;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.web.context.support.GenericWebApplicationContext;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.MockitoAnnotations.initMocks;
 
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 public class SpringStatusCheckerTest {
     private SpringStatusChecker springStatusChecker;
 
     @Mock
     private ApplicationContext applicationContext;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         initMocks(this);
         this.springStatusChecker = new SpringStatusChecker();
         new ServiceBean<Object>().setApplicationContext(applicationContext);
+    }
+
+    @AfterEach
+    public void tearDown() throws Exception {
+        SpringExtensionFactory.clearContexts();
+        Mockito.reset(applicationContext);
     }
 
     @Test
@@ -52,6 +66,7 @@ public class SpringStatusCheckerTest {
 
     @Test
     public void testWithLifeCycleRunning() {
+        SpringExtensionFactory.clearContexts();
         ApplicationLifeCycle applicationLifeCycle = mock(ApplicationLifeCycle.class);
         new ServiceBean<Object>().setApplicationContext(applicationLifeCycle);
         given(applicationLifeCycle.getConfigLocations()).willReturn(new String[]{"test1", "test2"});
@@ -65,6 +80,7 @@ public class SpringStatusCheckerTest {
 
     @Test
     public void testWithoutLifeCycleRunning() {
+        SpringExtensionFactory.clearContexts();
         ApplicationLifeCycle applicationLifeCycle = mock(ApplicationLifeCycle.class);
         new ServiceBean<Object>().setApplicationContext(applicationLifeCycle);
         given(applicationLifeCycle.isRunning()).willReturn(false);
@@ -76,5 +92,15 @@ public class SpringStatusCheckerTest {
 
     interface ApplicationLifeCycle extends Lifecycle, ApplicationContext {
         String[] getConfigLocations();
+    }
+
+    @Test
+    public void testGenericWebApplicationContext() {
+        SpringExtensionFactory.clearContexts();
+        GenericWebApplicationContext context = new GenericWebApplicationContext();
+        SpringExtensionFactory.addApplicationContext(context);
+        SpringStatusChecker checker = new SpringStatusChecker();
+        Status status = checker.check();
+        Assertions.assertEquals(Status.Level.UNKNOWN, status.getLevel());
     }
 }
